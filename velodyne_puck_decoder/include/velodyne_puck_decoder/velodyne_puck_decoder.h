@@ -28,6 +28,7 @@
 
 #include <ros/ros.h>
 #include <sensor_msgs/PointCloud2.h>
+#include <sensor_msgs/Image.h>
 
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl_ros/point_cloud.h>
@@ -179,6 +180,8 @@ private:
   double max_range;
   double frequency;
   bool publish_point_cloud;
+  bool publish_depth_image;
+  bool publish_intensity_image;
 
   double cos_azimuth_table[6300];
   double sin_azimuth_table[6300];
@@ -199,9 +202,19 @@ private:
   velodyne_puck_msgs::VelodynePuckSweepPtr sweep_data;
   sensor_msgs::PointCloud2 point_cloud_data;
 
+  /// Depth and intensity images
+  sensor_msgs::Image depth_image;
+  sensor_msgs::Image intensity_image;
+
+  /// Used to track which column of laser firings we are at in the
+  /// current sweep.
+  uint image_column = 0;
+
   ros::Subscriber packet_sub;
   ros::Publisher sweep_pub;
   ros::Publisher point_cloud_pub;
+  ros::Publisher depth_image_pub;
+  ros::Publisher intensity_image_pub;
 
 };
 
