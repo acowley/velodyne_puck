@@ -42,6 +42,11 @@
 
 namespace velodyne_puck_decoder {
 
+// Image output parameters
+static const int IMAGE_WIDTH = 700;
+static const int AZIMUTH_RES = 6300;
+static const float AZIMUTH_FACTOR = AZIMUTH_RES/IMAGE_WIDTH;
+
 // Raw Velodyne packet constants and structures.
 static const int SIZE_BLOCK      = 100;
 static const int RAW_SCAN_SIZE   = 3;
@@ -183,8 +188,8 @@ private:
   bool publish_depth_image;
   bool publish_intensity_image;
 
-  double cos_azimuth_table[6300];
-  double sin_azimuth_table[6300];
+  double cos_azimuth_table[AZIMUTH_RES];
+  double sin_azimuth_table[AZIMUTH_RES];
 
   bool is_first_sweep;
   double last_azimuth;
