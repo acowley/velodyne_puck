@@ -34,17 +34,18 @@ VelodynePuckDecoder::VelodynePuckDecoder(
   sweep_data(new velodyne_puck_msgs::VelodynePuckSweep()) {
 
   depth_image.height = 16;
-  depth_image.width = 0;
+  depth_image.width = IMAGE_WIDTH;
+  depth_image.step = depth_image.width * 2;
+  depth_image.data.resize(depth_image.height * depth_image.width * 2, 0);
   // Encode depth in increments of 100m/65535 (~1.5mm)
   depth_image.encoding = "mono16";
-  depth_image.step = depth_image.width * 2;
-  depth_image.data.resize(depth_image.height * depth_image.width * 2);
 
   intensity_image.height = depth_image.height;
   intensity_image.width = depth_image.width;
   intensity_image.encoding = "mono8";
-  intensity_image.step = depth_image.width;
-  intensity_image.data.resize(depth_image.height * depth_image.width);
+  intensity_image.step = intensity_image.width;
+  intensity_image.data.resize(
+    intensity_image.height * intensity_image.width, 0);
   return;
 }
 
@@ -263,12 +264,8 @@ void VelodynePuckDecoder::packetCallback(
 
   for (size_t fir_idx = start_fir_idx; fir_idx < end_fir_idx; ++fir_idx) {
     for (size_t scan_idx = 0; scan_idx < SCANS_PER_FIRING; ++scan_idx) {
-      // Check if the point is valid.
-      if (!isPointInRange(firings[fir_idx].distance[scan_idx])) continue;
-
       // Convert the point to xyz coordinate
       size_t table_idx = floor(firings[fir_idx].azimuth[scan_idx]*1000.0+0.5);
-      //cout << table_idx << endl;
       double cos_azimuth = cos_azimuth_table[table_idx];
       double sin_azimuth = sin_azimuth_table[table_idx];
 
@@ -311,18 +308,23 @@ void VelodynePuckDecoder::packetCallback(
       new_point.distance = firings[fir_idx].distance[scan_idx];
       new_point.intensity = firings[fir_idx].intensity[scan_idx];
 
-      if(publish_depth_image && depth_image.width > image_column + 1) {
+      if(publish_depth_image && depth_image.width*AZIMUTH_FACTOR > table_idx + 1) {
         uint16_t *ptr = reinterpret_cast<uint16_t*>(depth_image.data.data());
-        ptr[remapped_scan_idx * depth_image.width + image_column] =
-          static_cast<uint16_t>((new_point.distance / 100.0) * 65535);
+        ptr[(remapped_scan_idx * depth_image.width) + (int)(table_idx/AZIMUTH_FACTOR)] =
+          static_cast<uint16_t>((new_point.distance/100)*65535);
+        //ROS_INFO_STREAM(remapped_scan_idx << "," << image_column);
       }
-      if(publish_intensity_image && intensity_image.width > image_column + 1) {
+      else
+      {
+        //ROS_INFO_STREAM(image_column << " > " << depth_image.width);
+      }
+      if(publish_intensity_image && intensity_image.width*AZIMUTH_FACTOR > table_idx + 1) {
         intensity_image.data[
-          remapped_scan_idx * intensity_image.width + image_column] =
+          remapped_scan_idx * intensity_image.width + (int)(table_idx/AZIMUTH_FACTOR)] =
           static_cast<uint8_t>(new_point.intensity);
       }
-      ++image_column;
     }
+    ++image_column;
   }
 
   packet_start_time += FIRING_TOFFSET * (end_fir_idx-start_fir_idx);
@@ -334,30 +336,13 @@ void VelodynePuckDecoder::packetCallback(
     sweep_pub.publish(sweep_data);
     if (publish_point_cloud) publishPointCloud();
 
-    if (publish_depth_image || publish_intensity_image) {
-      if(depth_image.width == 0) {
-        // Figure out how many firings are in each scan
-        size_t num_firings = 0;
-        for(size_t scan_idx = 0; scan_idx < 16; ++scan_idx) {
-          if(sweep_data->scans[scan_idx].points.size() > num_firings) {
-            num_firings = sweep_data->scans[scan_idx].points.size();
-          }
-        }
-        depth_image.width = num_firings;
-        intensity_image.width = num_firings;
-        depth_image.data.resize(depth_image.height * depth_image.width * 2, 0);
-        intensity_image.data.resize(
-          intensity_image.height * intensity_image.width, 0);
-      } else {
-        if(publish_depth_image) {
-          depth_image.header = sweep_data->header;
-          depth_image_pub.publish(depth_image);
-        }
-        if(publish_intensity_image) {
-          intensity_image.header = sweep_data->header;
-          intensity_image_pub.publish(intensity_image);
-        }
-      }
+    if(publish_depth_image) {
+      depth_image.header = sweep_data->header;
+      depth_image_pub.publish(depth_image);
+    }
+    if(publish_intensity_image) {
+      intensity_image.header = sweep_data->header;
+      intensity_image_pub.publish(intensity_image);
     }
 
     sweep_data = velodyne_puck_msgs::VelodynePuckSweepPtr(
